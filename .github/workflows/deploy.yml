@@ -1,4 +1,4 @@
-name: Full Infra + App Deployment with SonarCloud
+name: Full Infra + App Deployment with SonarCloud scan
 
 on:
   push:
