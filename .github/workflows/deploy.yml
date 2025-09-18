@@ -11,13 +11,10 @@ jobs:
     runs-on: windows-latest
 
     env:
-      # Terraform backend configuration
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
       TF_BACKEND_CONTAINER: ${{ secrets.TF_BACKEND_CONTAINER }}
       TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
-
-      # Deployment configuration
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
 
     steps:
@@ -31,13 +28,14 @@ jobs:
 
       # 🔹 Debug step: verify secret exists
       - name: Check AZURE_CREDENTIALS exists
+        shell: pwsh
         run: |
-          if [ -z "${{ secrets.AZURE_CREDENTIALS }}" ]; then
-            echo "AZURE_CREDENTIALS is not set!"
-            exit 1
-          else
-            echo "AZURE_CREDENTIALS is set."
-          fi
+          if (-not $env:AZURE_CREDENTIALS) {
+              Write-Error "AZURE_CREDENTIALS is not set!"
+              exit 1
+          } else {
+              Write-Output "AZURE_CREDENTIALS is set."
+          }
 
       # 🔹 Azure Login using Service Principal (v1)
       - name: Azure Login
