@@ -84,10 +84,18 @@ jobs:
           fetch-depth: 0
 
       # -----------------------------
-      # Debug: check where the .sln file is
+      # Detect solution file automatically
       # -----------------------------
-      - name: List repository files
-        run: ls -R
+      - name: Detect solution file
+        id: detect_sln
+        run: |
+          SLN_PATH=$(find . -name "*.sln" | head -n 1)
+          if [ -z "$SLN_PATH" ]; then
+            echo "No .sln file found!"
+            exit 1
+          fi
+          echo "Found solution file at: $SLN_PATH"
+          echo "SLN_PATH=$SLN_PATH" >> $GITHUB_ENV
 
       # -----------------------------
       # Set up .NET 9
@@ -101,10 +109,19 @@ jobs:
       # Restore, Build, Publish
       # -----------------------------
       - name: Restore NuGet Packages
-        run: dotnet restore <path-to-your-sln-file> # e.g., EmployeeManagement/EmployeeManagement.sln
+        run: dotnet restore "$SLN_PATH"
 
       - name: Build Solution
-        run: dotnet build <path-to-your-sln-file> --configuration Release
+        run: dotnet build "$SLN_PATH" --configuration Release
+
+      # -----------------------------
+      # SonarCloud Scan
+      # -----------------------------
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
@@ -122,7 +139,7 @@ jobs:
           ConnectionStrings__DefaultConnection: ${{ secrets.DB_CONNECTION_STRING }}
 
       - name: Publish Web Application
-        run: dotnet publish <path-to-your-sln-file> -c Release -o ${{ runner.temp }}/WebAppContent
+        run: dotnet publish "$SLN_PATH" -c Release -o ${{ runner.temp }}/WebAppContent
 
       - name: Archive Files
         run: |
