@@ -35,7 +35,7 @@ jobs:
           terraform_version: latest
 
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v2.12.0
         with:
           auth-type: service-principal
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
