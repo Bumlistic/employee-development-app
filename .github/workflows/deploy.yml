@@ -29,7 +29,17 @@ jobs:
         with:
           terraform_version: latest
 
-      # 🔹 Azure Login using Service Principal (creds JSON)
+      # 🔹 Debug step: verify secret exists
+      - name: Check AZURE_CREDENTIALS exists
+        run: |
+          if [ -z "${{ secrets.AZURE_CREDENTIALS }}" ]; then
+            echo "AZURE_CREDENTIALS is not set!"
+            exit 1
+          else
+            echo "AZURE_CREDENTIALS is set."
+          fi
+
+      # 🔹 Azure Login using Service Principal (v1)
       - name: Azure Login
         uses: azure/login@v1
         with:
