@@ -83,16 +83,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      # -----------------------------
+      # Debug: check where the .sln file is
+      # -----------------------------
+      - name: List repository files
+        run: ls -R
+
+      # -----------------------------
+      # Set up .NET 9
+      # -----------------------------
       - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
+      # -----------------------------
+      # Restore, Build, Publish
+      # -----------------------------
       - name: Restore NuGet Packages
-        run: dotnet restore EmployeeManagement.sln
+        run: dotnet restore <path-to-your-sln-file> # e.g., EmployeeManagement/EmployeeManagement.sln
 
       - name: Build Solution
-        run: dotnet build EmployeeManagement.sln --configuration Release
+        run: dotnet build <path-to-your-sln-file> --configuration Release
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
@@ -110,7 +122,7 @@ jobs:
           ConnectionStrings__DefaultConnection: ${{ secrets.DB_CONNECTION_STRING }}
 
       - name: Publish Web Application
-        run: dotnet publish EmployeeManagement.sln -c Release -o ${{ runner.temp }}/WebAppContent
+        run: dotnet publish <path-to-your-sln-file> -c Release -o ${{ runner.temp }}/WebAppContent
 
       - name: Archive Files
         run: |
