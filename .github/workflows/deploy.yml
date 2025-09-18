@@ -10,7 +10,7 @@ jobs:
   terraform:
     runs-on: windows-latest
     env:
-      # Azure authentication for Terraform
+      # Terraform environment variables
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -33,6 +33,14 @@ jobs:
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: latest
+
+      # 🔹 Debug step to verify secrets
+      - name: Verify Azure secrets
+        run: |
+          echo "AZURE_CLIENT_ID is set? ${{ secrets.AZURE_CLIENT_ID != '' }}"
+          echo "AZURE_TENANT_ID is set? ${{ secrets.AZURE_TENANT_ID != '' }}"
+          echo "AZURE_SUBSCRIPTION_ID is set? ${{ secrets.AZURE_SUBSCRIPTION_ID != '' }}"
+          echo "AZURE_CLIENT_SECRET is set? ${{ secrets.AZURE_CLIENT_SECRET != '' }}"
 
       - name: Azure Login
         uses: azure/login@v2
