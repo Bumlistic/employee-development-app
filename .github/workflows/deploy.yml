@@ -1,4 +1,4 @@
-name: Full Infra + App Deployment with SonarCloud scan
+name: Full Infra + App Deployment with Terraform
 
 on:
   push:
@@ -11,39 +11,33 @@ jobs:
     runs-on: windows-latest
 
     env:
+      # Terraform backend configuration
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
       TF_BACKEND_CONTAINER: ${{ secrets.TF_BACKEND_CONTAINER }}
       TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
+
+      # Deployment configuration
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
 
     steps:
+      # 1️⃣ Checkout the repo
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # 2️⃣ Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: latest
 
-      # 🔹 Debug step: verify secret exists
-      - name: Check AZURE_CREDENTIALS exists
-        shell: pwsh
-        run: |
-          if (-not $env:AZURE_CREDENTIALS) {
-              Write-Error "AZURE_CREDENTIALS is not set!"
-              exit 1
-          } else {
-              Write-Output "AZURE_CREDENTIALS is set."
-          }
-
-      # 🔹 Azure Login using Service Principal (v1)
+      # 3️⃣ Azure Login using Service Principal (direct creds usage)
       - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # 🔹 Terraform Init
+      # 4️⃣ Terraform Init
       - name: Terraform Init
         shell: pwsh
         run: |
@@ -53,12 +47,12 @@ jobs:
             -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
             -backend-config="key=${{ env.TF_BACKEND_KEY }}"
 
-      # 🔹 Terraform Plan
+      # 5️⃣ Terraform Plan
       - name: Terraform Plan
         shell: pwsh
         run: terraform plan
 
-      # 🔹 Terraform Apply
+      # 6️⃣ Terraform Apply
       - name: Terraform Apply
         shell: pwsh
         run: terraform apply -auto-approve
