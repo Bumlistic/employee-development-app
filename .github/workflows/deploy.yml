@@ -11,12 +11,6 @@ jobs:
     runs-on: windows-latest
 
     env:
-      # Terraform authentication
-      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       # Terraform backend configuration
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
@@ -35,15 +29,11 @@ jobs:
         with:
           terraform_version: latest
 
-      # 🔹 Azure Login using Service Principal (v1)
+      # 🔹 Azure Login using Service Principal (creds JSON)
       - name: Azure Login
         uses: azure/login@v1
         with:
-          auth-type: SERVICE_PRINCIPAL       # Must be uppercase with underscore
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       # 🔹 Terraform Init
       - name: Terraform Init
@@ -53,21 +43,17 @@ jobs:
             -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
             -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
             -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
-            -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
-            -backend-config="subscription_id=${{ env.ARM_SUBSCRIPTION_ID }}" `
-            -backend-config="client_id=${{ env.ARM_CLIENT_ID }}" `
-            -backend-config="client_secret=${{ env.ARM_CLIENT_SECRET }}" `
-            -backend-config="tenant_id=${{ env.ARM_TENANT_ID }}"
+            -backend-config="key=${{ env.TF_BACKEND_KEY }}"
 
       # 🔹 Terraform Plan
       - name: Terraform Plan
         shell: pwsh
-        run: terraform plan -var subscription_id=${{ env.ARM_SUBSCRIPTION_ID }}
+        run: terraform plan
 
       # 🔹 Terraform Apply
       - name: Terraform Apply
         shell: pwsh
-        run: terraform apply -var subscription_id=${{ env.ARM_SUBSCRIPTION_ID }} -auto-approve
+        run: terraform apply -auto-approve
 
       - name: Save Web App Name
         id: webapp
