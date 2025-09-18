@@ -24,58 +24,63 @@ jobs:
 
       # Deployment configuration
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
-      WEBAPP_NAME: ${{ secrets.WEBAPP_NAME }}
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: latest
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: latest
 
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
 
-    - name: Terraform Init
-      shell: pwsh
-      run: |
-        terraform init `
-          -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
-          -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
-          -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
-          -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
-          -backend-config="subscription_id=${{ env.ARM_SUBSCRIPTION_ID }}" `
-          -backend-config="client_id=${{ env.ARM_CLIENT_ID }}" `
-          -backend-config="client_secret=${{ env.ARM_CLIENT_SECRET }}" `
-          -backend-config="tenant_id=${{ env.ARM_TENANT_ID }}"
+      - name: Terraform Init
+        shell: pwsh
+        run: |
+          terraform init `
+            -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
+            -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
+            -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
+            -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
+            -backend-config="subscription_id=${{ env.ARM_SUBSCRIPTION_ID }}" `
+            -backend-config="client_id=${{ env.ARM_CLIENT_ID }}" `
+            -backend-config="client_secret=${{ env.ARM_CLIENT_SECRET }}" `
+            -backend-config="tenant_id=${{ env.ARM_TENANT_ID }}"
 
-    - name: Terraform Plan
-      shell: pwsh
-      run: terraform plan -var subscription_id=${{ env.ARM_SUBSCRIPTION_ID }}
+      - name: Terraform Plan
+        shell: pwsh
+        run: terraform plan -var subscription_id=${{ env.ARM_SUBSCRIPTION_ID }}
 
-    - name: Terraform Apply
-      shell: pwsh
-      run: terraform apply -var subscription_id=${{ env.ARM_SUBSCRIPTION_ID }} -auto-approve
+      - name: Terraform Apply
+        shell: pwsh
+        run: terraform apply -var subscription_id=${{ env.ARM_SUBSCRIPTION_ID }} -auto-approve
 
-    - name: Save Web App Name
-      id: webapp
-      shell: pwsh
-      run: |
-        $webAppName = terraform output -raw devflow_app_service_name
-        Write-Host "WEBAPP_NAME=$webAppName" >> $env:GITHUB_ENV
+      - name: Save Web App Name
+        id: webapp
+        shell: pwsh
+        run: |
+          $webAppName = terraform output -raw devflow_app_service_name
+          echo "webapp_name=$webAppName" >> $env:GITHUB_OUTPUT
 
+    outputs:
+      WEBAPP_NAME: ${{ steps.webapp.outputs.webapp_name }}
+
+# -----------------------------
+# Build and Deploy Job
+# -----------------------------
   build-and-deploy:
     runs-on: windows-latest
     needs: terraform
     env:
-      WEBAPP_NAME: ${{ env.WEBAPP_NAME }}
+      WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
       DOTNET_CLI_HOME: ${{ github.workspace }}
       DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
@@ -84,66 +89,66 @@ jobs:
       SONAR_ORG: workinghardonazure
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0  # required for SonarCloud
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Required for SonarCloud
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '9.0.x'
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
 
-    - name: Install EF Core Tools
-      run: dotnet tool install --global dotnet-ef --version 9.0.1
+      - name: Install EF Core Tools
+        run: dotnet tool install --global dotnet-ef --version 9.0.1
 
-    # -----------------------------
-    # SonarCloud Steps
-    # -----------------------------
-    - name: SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@v2
-      with:
-        args: >
-          -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
-          -Dsonar.organization=${{ env.SONAR_ORG }}
-          -Dsonar.sources=.
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # -----------------------------
+      # SonarCloud Scan
+      # -----------------------------
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ env.SONAR_ORG }}
+            -Dsonar.sources=.
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-    # -----------------------------
-    # Build, Migrate, and Deploy
-    # -----------------------------
-    - name: Restore NuGet Packages
-      run: nuget restore EmployeeManagement.sln
+      # -----------------------------
+      # Build, Migrate, and Deploy
+      # -----------------------------
+      - name: Restore NuGet Packages
+        run: nuget restore EmployeeManagement.sln
 
-    - name: Build Solution
-      run: msbuild EmployeeManagement.sln /p:Configuration=Release /p:Platform="Any CPU"
+      - name: Build Solution
+        run: msbuild EmployeeManagement.sln /p:Configuration=Release /p:Platform="Any CPU"
 
-    - name: Publish Web Application
-      run: msbuild EmployeeManagement.sln /p:DeployOnBuild=true /p:DeployDefaultTarget=WebPublish /p:WebPublishMethod=FileSystem /p:publishUrl="${{ runner.temp }}\WebAppContent\" /p:Configuration=Release
+      - name: Publish Web Application
+        run: msbuild EmployeeManagement.sln /p:DeployOnBuild=true /p:DeployDefaultTarget=WebPublish /p:WebPublishMethod=FileSystem /p:publishUrl="${{ runner.temp }}\WebAppContent\" /p:Configuration=Release
 
-    - name: Run Database Migrations
-      run: dotnet ef database update --project EmployeeManagement.App/EmployeeManagement.App.csproj
-      env:
-        ConnectionStrings__DefaultConnection: ${{ secrets.DB_CONNECTION_STRING }}
+      - name: Run Database Migrations
+        run: dotnet ef database update --project EmployeeManagement.App/EmployeeManagement.App.csproj
+        env:
+          ConnectionStrings__DefaultConnection: ${{ secrets.DB_CONNECTION_STRING }}
 
-    - name: Archive Files
-      run: |
-        mkdir ${{ runner.temp }}\package
-        Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
+      - name: Archive Files
+        run: |
+          mkdir ${{ runner.temp }}\package
+          Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
 
-    - name: Get Web App Publish Profile
-      shell: pwsh
-      run: |
-        $profile = az webapp deployment list-publishing-profiles `
-          --name $env:WEBAPP_NAME `
-          --resource-group $env:RESOURCE_GROUP_NAME `
-          --xml
-        Set-Content -Path "${{ runner.temp }}\publish-profile.xml" -Value $profile
+      - name: Get Web App Publish Profile
+        shell: pwsh
+        run: |
+          $profile = az webapp deployment list-publishing-profiles `
+            --name $env:WEBAPP_NAME `
+            --resource-group $env:RESOURCE_GROUP_NAME `
+            --xml
+          Set-Content -Path "${{ runner.temp }}\publish-profile.xml" -Value $profile
 
-    - name: Deploy to Azure Web App
-      uses: azure/webapps-deploy@v2
-      with:
-        app-name: ${{ env.WEBAPP_NAME }}
-        publish-profile: ${{ runner.temp }}\publish-profile.xml
-        package: ${{ runner.temp }}\package\WebApp.zip
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.WEBAPP_NAME }}
+          publish-profile: ${{ runner.temp }}\publish-profile.xml
+          package: ${{ runner.temp }}\package\WebApp.zip
