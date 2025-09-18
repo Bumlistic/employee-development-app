@@ -1,10 +1,5 @@
 name: Full Infra + App Deployment with SonarCloud scan
 
-# Give GitHub Actions permission to request OIDC tokens
-permissions:
-  id-token: write
-  contents: read
-
 on:
   push:
     branches:
@@ -14,17 +9,15 @@ on:
 jobs:
   terraform:
     runs-on: windows-latest
-    env:
-      # Terraform environment variables
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    permissions:
+      id-token: write  # Required for OIDC authentication
 
-      # Terraform backend configuration
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
       TF_BACKEND_CONTAINER: ${{ secrets.TF_BACKEND_CONTAINER }}
       TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
-
-      # Deployment configuration
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
 
     steps:
@@ -36,9 +29,8 @@ jobs:
         with:
           terraform_version: latest
 
-      # 🔹 Azure Login using GitHub OIDC (no client secret needed)
       - name: Azure Login via OIDC
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           auth-type: oidc
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -62,6 +54,7 @@ jobs:
       - name: Terraform Apply
         shell: pwsh
         run: terraform apply -var subscription_id=${{ env.ARM_SUBSCRIPTION_ID }} -auto-approve
+
 
       - name: Save Web App Name
         id: webapp
