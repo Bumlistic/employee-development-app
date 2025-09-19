@@ -1,30 +1,33 @@
-output "resource_group_name" {
-  description = "The name of the resource group"
+# ----------------------------
+# Output Safe Infrastructure Info
+# ----------------------------
+
+# Web App name (used in GitHub Actions deploy step)
+output "devflow_app_service_name" {
+  description = "The name of the App Service"
+  value       = azurerm_windows_web_app.bumlistic-web-app.name
+}
+
+# Resource Group
+output "devflow_resource_group_name" {
+  description = "Resource Group name"
   value       = azurerm_resource_group.devflow_resource_group.name
 }
 
-output "sql_server_name" {
-  description = "The name of the SQL Server"
-  value       = azurerm_mssql_server.devflow_mssql_server.name
+# SQL Server FQDN (used in troubleshooting / firewall rules)
+output "devflow_mssql_server_fqdn" {
+  description = "Fully qualified domain name of the SQL Server"
+  value       = azurerm_mssql_server.devflow_mssql_server.fully_qualified_domain_name
 }
 
-output "sql_database_name" {
-  description = "The SQL Database name"
+# Database name
+output "devflow_database_name" {
+  description = "Name of the MSSQL database"
   value       = azurerm_mssql_database.devflow_mssql_server_database.name
 }
 
-output "sql_connection_string" {
-  description = "Connection string for the database"
-  value       = "Server=tcp:${azurerm_mssql_server.devflow_mssql_server.fully_qualified_domain_name},1433;Initial Catalog=${azurerm_mssql_database.devflow_mssql_server_database.name};Persist Security Info=False;User ID=${var.devflow_mssql_server_admin};Password=${var.devflow_mssql_server_password};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
-  sensitive   = true
-}
-
-output "app_service_url" {
-  description = "The default hostname of the App Service"
-  value       = azurerm_windows_web_app.bumlistic-web-app.default_hostname
-}
-
-output "key_vault_uri" {
+# Key Vault URI (needed for app service Key Vault references)
+output "devflow_key_vault_uri" {
   description = "The URI of the Key Vault"
   value       = azurerm_key_vault.devflow_key_vault.vault_uri
 }
