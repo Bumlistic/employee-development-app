@@ -31,3 +31,8 @@ output "devflow_key_vault_uri" {
   description = "The URI of the Key Vault"
   value       = azurerm_key_vault.devflow_key_vault.vault_uri
 }
+
+output "devflow_db_connection_string" {
+  value = azurerm_key_vault_secret.db_connection_string.value
+  sensitive = true
+}
