@@ -159,13 +159,10 @@ jobs:
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
 
-          # Log a masked version of the conn string to confirm it's set
           Write-Host "Using DB connection string from Terraform (masked)."
-
-          # Run migrations with EmployeeDBContext
-          dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj --context EmployeeDBContext
-        env:
-          ConnectionStrings__DefaultConnection: ${{ needs.terraform.outputs.DB_CONN_STRING }}
+          dotnet-ef database update `
+            --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj `
+            --connection "${{ needs.terraform.outputs.DB_CONN_STRING }}"
 
       - name: Archive Files
         run: |
