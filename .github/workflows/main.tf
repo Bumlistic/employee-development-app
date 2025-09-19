@@ -79,7 +79,7 @@ resource "azurerm_windows_web_app" "bumlistic-web-app" {
   app_settings = {
     "WEBSITE_RUN_FROM_PACKAGE" = "1"
     "ASPNETCORE_ENVIRONMENT" = "Production"
-    "KeyVaultUrl": "${azurerm_key_vault.devflow_key_vault.vault_uri}"
+    "KeyVaultUrl" = "${azurerm_key_vault.devflow_key_vault.vault_uri}"
   }
 }
 
