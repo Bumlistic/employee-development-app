@@ -160,7 +160,7 @@ jobs:
           $env:PATH = "$PWD/tools;$env:PATH"
           dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
         env:
-          ConnectionStrings__DefaultConnection: ${{ env.DB_CONNECTION_STRING }}
+          ConnectionStrings__DefaultConnection: ${{ needs.terraform.outputs.DB_CONN_STRING }}
 
       - name: Archive Files
         run: |
