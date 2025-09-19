@@ -154,13 +154,14 @@ jobs:
       # -----------------------------
       - name: Run EF Core Migrations
         shell: pwsh
+        env:
+         DB_CONNECTION_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
         run: |
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
 
           Write-Host "Using DB connection string from Terraform (masked)."
-          $env:DB_CONNECTION_STRING = "${{ needs.terraform.outputs.DB_CONN_STRING }}"
           dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: Archive Files
