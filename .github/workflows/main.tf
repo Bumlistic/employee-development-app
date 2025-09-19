@@ -32,6 +32,7 @@ resource "null_resource" "cluster" {
 }
 
 data "azurerm_client_config" "devflow_client_config" {}
+
 resource "azurerm_key_vault" "devflow_key_vault" {
   name                        = var.devflow_key_vault_name
   location                    = azurerm_resource_group.devflow_resource_group.location
@@ -42,7 +43,13 @@ resource "azurerm_key_vault" "devflow_key_vault" {
   purge_protection_enabled    = var.devflow_purge_protection_enabled
   sku_name                    = var.devflow_key_vault_sku_name
 }
-  
+
+resource "azurerm_key_vault_secret" "db_connection_string" {
+  name         = "DbConnectionString"
+  value        = "Server=tcp:${azurerm_mssql_server.devflow_mssql_server.name}.database.windows.net,1433;Initial Catalog=${azurerm_mssql_database.devflow_mssql_server_database.name};Persist Security Info=False;User ID=${var.devflow_mssql_server_admin};Password=${var.devflow_mssql_server_password};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+  key_vault_id = azurerm_key_vault.devflow_key_vault.id
+}
+
 resource "azurerm_key_vault_access_policy" "devflow_key_vault_access_policy" {
   depends_on   = [azurerm_key_vault.devflow_key_vault]
   key_vault_id = azurerm_key_vault.devflow_key_vault.id
@@ -79,7 +86,8 @@ resource "azurerm_windows_web_app" "bumlistic-web-app" {
   app_settings = {
     "WEBSITE_RUN_FROM_PACKAGE" = "1"
     "ASPNETCORE_ENVIRONMENT" = "Production"
-    "KeyVaultUrl" = "${azurerm_key_vault.devflow_key_vault.vault_uri}"
+    "KeyVaultUrl" = azurerm_key_vault.devflow_key_vault.vault_uri
+    "ConnectionStrings__DefaultConnection" = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.db_connection_string.id})"
   }
 }
 
