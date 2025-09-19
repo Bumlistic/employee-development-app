@@ -121,19 +121,30 @@ jobs:
           path: app-code
           fetch-depth: 0
 
+      # -----------------------------
+      # Auto-detect .sln file
+      # -----------------------------
+      - name: Find solution file
+        id: sln
+        shell: pwsh
+        run: |
+          $sln = Get-ChildItem -Path ./app-code -Filter *.sln -Recurse | Select-Object -First 1
+          if (-not $sln) { Write-Error "No .sln file found!" }
+          echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
       - name: Restore NuGet Packages
-        run: dotnet restore ./app-code/*.sln
+        run: dotnet restore ${{ steps.sln.outputs.sln_path }}
 
       - name: Build Solution
-        run: msbuild ./app-code/*.sln /p:Configuration=Release /p:Platform="Any CPU"
+        run: msbuild ${{ steps.sln.outputs.sln_path }} /p:Configuration=Release /p:Platform="Any CPU"
 
       - name: Publish Web Application
-        run: msbuild ./app-code/*.sln /p:DeployOnBuild=true /p:DeployDefaultTarget=WebPublish /p:WebPublishMethod=FileSystem /p:publishUrl="${{ runner.temp }}\WebAppContent\" /p:Configuration=Release
+        run: msbuild ${{ steps.sln.outputs.sln_path }} /p:DeployOnBuild=true /p:DeployDefaultTarget=WebPublish /p:WebPublishMethod=FileSystem /p:publishUrl="${{ runner.temp }}\WebAppContent\" /p:Configuration=Release
 
       - name: Run Database Migrations
         run: dotnet ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
