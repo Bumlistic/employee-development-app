@@ -141,10 +141,10 @@ jobs:
         run: dotnet restore ${{ steps.sln.outputs.sln_path }}
 
       - name: Build Solution
-        run: msbuild ${{ steps.sln.outputs.sln_path }} /p:Configuration=Release /p:Platform="Any CPU"
+        run: dotnet build ${{ steps.sln.outputs.sln_path }} --configuration Release
 
       - name: Publish Web Application
-        run: msbuild ${{ steps.sln.outputs.sln_path }} /p:DeployOnBuild=true /p:DeployDefaultTarget=WebPublish /p:WebPublishMethod=FileSystem /p:publishUrl="${{ runner.temp }}\WebAppContent\" /p:Configuration=Release
+        run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
 
       - name: Run Database Migrations
         run: dotnet ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
