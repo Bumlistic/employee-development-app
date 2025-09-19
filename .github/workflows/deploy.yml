@@ -7,9 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # -----------------------------
-  # Stage 1: Terraform Deployment
-  # -----------------------------
   terraform:
     name: Terraform Deployment
     runs-on: windows-latest
@@ -62,13 +59,14 @@ jobs:
     outputs:
       WEBAPP_NAME: ${{ steps.webapp.outputs.webapp_name }}
 
-  # --------------------------------------
-  # Stage 2: Build, Migrate, Deploy App
-  # --------------------------------------
+# -----------------------------
+# Build, Migrate, and Deploy Job
+# -----------------------------
   build-and-deploy:
     name: Build, Migrate, Deploy
     runs-on: windows-latest
-    needs: terraform  # Wait for Terraform job
+    needs: terraform
+
     env:
       WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
@@ -88,12 +86,9 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
+      # -----------------------------
+      # SonarCloud Scan (Linux runner recommended)
+      # -----------------------------
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
         with:
@@ -104,6 +99,9 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+      # -----------------------------
+      # Restore, Build, Publish, Migrate
+      # -----------------------------
       - name: Restore NuGet Packages
         shell: pwsh
         run: dotnet restore ./app-code/*.sln
@@ -119,7 +117,9 @@ jobs:
       - name: Install EF Core Tools Locally & Run Migrations
         shell: pwsh
         run: |
+          # Install dotnet-ef in ./tools folder
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
+          # Run database migration
           ./tools/dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
         env:
           ConnectionStrings__DefaultConnection: ${{ secrets.DB_CONNECTION_STRING }}
