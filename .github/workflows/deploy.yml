@@ -147,18 +147,14 @@ jobs:
         run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
 
       # -----------------------------
-      # Install EF Core for migrations
+      # Install EF Core & Run Migrations
       # -----------------------------
-      - name: Install EF Core Tools
-        run: dotnet tool install --global dotnet-ef --version 9.0.1
-
-      - name: Add dotnet tools to PATH
+      - name: Install EF Core and Run Migrations
         shell: pwsh
-        run: $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-
-      - name: Run Database Migrations
-        shell: pwsh
-        run: dotnet ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
+        run: |
+          dotnet tool install --global dotnet-ef --version 9.0.1
+          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          dotnet ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
         env:
           ConnectionStrings__DefaultConnection: ${{ secrets.DB_CONNECTION_STRING }}
 
