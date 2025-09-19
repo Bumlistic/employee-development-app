@@ -103,81 +103,79 @@ jobs:
 # Build & Deploy Job (Windows)
 # -----------------------------
   build-and-deploy:
-   name: Build & Deploy App
-   runs-on: windows-latest
-   needs: [terraform, sonarcloud]
-   env:
-    WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
-    RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
-    DOTNET_CLI_HOME: ${{ github.workspace }}
-    DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+    name: Build & Deploy App
+    runs-on: windows-latest
+    needs: [terraform, sonarcloud]
+    env:
+      WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
+      RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
+      DOTNET_CLI_HOME: ${{ github.workspace }}
+      DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
 
-   steps:
-    - name: Checkout App Repository
-      uses: actions/checkout@v3
-      with:
-        repository: Bumlistic/clone-from-azure-app-folder
-        token: ${{ secrets.GITHUB_TOKEN }}
-        path: app-code
-        fetch-depth: 0
+    steps:
+      - name: Checkout App Repository
+        uses: actions/checkout@v3
+        with:
+          repository: Bumlistic/clone-from-azure-app-folder
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: app-code
+          fetch-depth: 0
 
-    # -----------------------------
-    # Auto-detect .sln file
-    # -----------------------------
-    - name: Find solution file
-      id: sln
-      shell: pwsh
-      run: |
-        $sln = Get-ChildItem -Path ./app-code -Filter *.sln -Recurse | Select-Object -First 1
-        if (-not $sln) { Write-Error "No .sln file found!" }
-        echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
+      # -----------------------------
+      # Auto-detect .sln file
+      # -----------------------------
+      - name: Find solution file
+        id: sln
+        shell: pwsh
+        run: |
+          $sln = Get-ChildItem -Path ./app-code -Filter *.sln -Recurse | Select-Object -First 1
+          if (-not $sln) { Write-Error "No .sln file found!" }
+          echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '9.0.x'
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
 
-    - name: Restore NuGet Packages
-      run: dotnet restore ${{ steps.sln.outputs.sln_path }}
+      - name: Restore NuGet Packages
+        run: dotnet restore ${{ steps.sln.outputs.sln_path }}
 
-    - name: Build Solution
-      run: dotnet build ${{ steps.sln.outputs.sln_path }} --configuration Release
+      - name: Build Solution
+        run: dotnet build ${{ steps.sln.outputs.sln_path }} --configuration Release
 
-    - name: Publish Web Application
-      run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
+      - name: Publish Web Application
+        run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
 
-    # -----------------------------
-    # Install EF Core Tools Locally & Run Migrations
-    # -----------------------------
-    - name: Install EF Core Tools Locally & Run Migrations
-      shell: pwsh
-      run: |
-        # Create a local tools folder
-        mkdir ./tools
-        # Install dotnet-ef locally in ./tools
-        dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
-        # Run migrations using the locally installed dotnet-ef
-        ./tools/dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
-      env:
-        ConnectionStrings__DefaultConnection: ${{ secrets.DB_CONNECTION_STRING }}
+      # -----------------------------
+      # Install EF Core Tools Locally & Run Migrations (Design-Time Factory)
+      # -----------------------------
+      - name: Run EF Core Migrations using DesignTimeDbContextFactory
+        shell: pwsh
+        run: |
+          mkdir ./tools
+          dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
+          $env:PATH = "$PWD/tools;$env:PATH"
+          dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
+        env:
+          ConnectionStrings__DefaultConnection: ${{ secrets.DB_CONNECTION_STRING }}
 
-    - name: Archive Files
-      run: |
-        mkdir ${{ runner.temp }}\package
-        Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
+      - name: Archive Files
+        run: |
+          mkdir ${{ runner.temp }}\package
+          Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
 
-    - name: Get Web App Publish Profile
-      shell: pwsh
-      run: |
-        $profile = az webapp deployment list-publishing-profiles `
-          --name $env:WEBAPP_NAME `
-          --resource-group $env:RESOURCE_GROUP_NAME `
-          --xml
-        Set-Content -Path "${{ runner.temp }}\publish-profile.xml" -Value $profile
+      - name: Get Web App Publish Profile
+        shell: pwsh
+        run: |
+          $profile = az webapp deployment list-publishing-profiles `
+            --name $env:WEBAPP_NAME `
+            --resource-group $env:RESOURCE_GROUP_NAME `
+            --xml
+          Set-Content -Path "${{ runner.temp }}\publish-profile.xml" -Value $profile
 
-    - name: Deploy to Azure Web App
-      uses: azure/webapps-deploy@v2
-      with:
-        app-name: ${{ env.WEBAPP_NAME }}
-        publish-profile: ${{ runner.temp }}\publish-profile.xml
-        package: ${{ runner.temp }}\package\WebApp.zip
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.WEBAPP_NAME }}
+          publish-profile: ${{ runner.temp }}\publish-profile.xml
+          package: ${{ runner.temp }}\package\WebApp.zip
