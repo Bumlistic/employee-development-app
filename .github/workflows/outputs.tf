@@ -39,6 +39,6 @@ output "devflow_db_connection_string" {
 
 output "devflow_db_connection_string" {
   description = "SQL Server connection string for EF Core"
-  value = "Server=tcp:${azurerm_mssql_server.devflow_mssql_server.fully_qualified_domain_name},1433;Initial Catalog=${azurerm_mssql_database.devflow_mssql_server_database.name};Persist Security Info=False;User ID=${azurerm_mssql_server.devflow_mssql_server.administrator_login};Password=${azurerm_mssql_server.devflow_mssql_server.administrator_login_password};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
-  sensitive = true
+  value       = "Server=tcp:devflow-mssql-server.database.windows.net,1433;Initial Catalog=devflow-db;Persist Security Info=False;User ID=missadministrator;Password=thisIsKat11;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+  sensitive   = true
 }
