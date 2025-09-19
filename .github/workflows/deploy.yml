@@ -102,17 +102,17 @@ jobs:
 # -----------------------------
 # Build & Deploy Job (Windows)
 # -----------------------------
-build-and-deploy:
-  name: Build & Deploy App
-  runs-on: windows-latest
-  needs: [terraform, sonarcloud]
-  env:
+  build-and-deploy:
+   name: Build & Deploy App
+   runs-on: windows-latest
+   needs: [terraform, sonarcloud]
+   env:
     WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
     RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
     DOTNET_CLI_HOME: ${{ github.workspace }}
     DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
 
-  steps:
+   steps:
     - name: Checkout App Repository
       uses: actions/checkout@v3
       with:
