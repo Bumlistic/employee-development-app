@@ -13,6 +13,9 @@ jobs:
   terraform:
     name: Terraform Deployment
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ./employee-development-app   # <-- infra folder
 
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
@@ -23,10 +26,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: latest
 
@@ -55,10 +58,6 @@ jobs:
       - name: Refresh Terraform State
         shell: pwsh
         run: terraform refresh
-
-      - name: Wait for Azure Resources
-        shell: pwsh
-        run: Start-Sleep -Seconds 10
 
       - name: Save Infra Outputs
         id: infra
@@ -90,12 +89,9 @@ jobs:
       SONAR_ORG: workinghardonazure
 
     steps:
-      - name: Checkout App Repository
-        uses: actions/checkout@v3
+      - name: Checkout App Code
+        uses: actions/checkout@v4
         with:
-          repository: Bumlistic/clone-from-azure-app-folder
-          token: ${{ secrets.GITHUB_TOKEN }}
-          path: app-code
           fetch-depth: 0
 
       - name: Set up JDK 17
@@ -112,7 +108,7 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
-            -Dsonar.sources=./app-code
+            -Dsonar.sources=./employee-user-management   # <-- app folder
 
   # -----------------------------
   # Build & Deploy Job (Windows)
@@ -121,6 +117,9 @@ jobs:
     name: Build & Deploy App
     runs-on: windows-latest
     needs: [terraform, sonarcloud]
+    defaults:
+      run:
+        working-directory: ./employee-user-management   # <-- app folder
     env:
       WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
       DB_CONNECTION_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
@@ -128,19 +127,14 @@ jobs:
       DOTNET_CLI_HOME: ${{ github.workspace }}
 
     steps:
-      - name: Checkout App Repository
-        uses: actions/checkout@v3
-        with:
-          repository: Bumlistic/clone-from-azure-app-folder
-          token: ${{ secrets.GITHUB_TOKEN }}
-          path: app-code
-          fetch-depth: 0
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
       - name: Find solution file
         id: sln
         shell: pwsh
         run: |
-          $sln = Get-ChildItem -Path ./app-code -Filter *.sln -Recurse | Select-Object -First 1
+          $sln = Get-ChildItem -Path . -Filter *.sln -Recurse | Select-Object -First 1
           if (-not $sln) { Write-Error "No .sln file found!" }
           echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
 
@@ -176,7 +170,7 @@ jobs:
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
           Write-Host "Running EF Core migrations..."
-          dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
+          dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: Archive Files
         run: |
