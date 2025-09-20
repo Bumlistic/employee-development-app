@@ -34,6 +34,6 @@ output "devflow_key_vault_uri" {
 
 output "devflow_db_connection_string" {
   description = "SQL Server connection string for EF Core"
-  value       = "Server=tcp:devflow-mssql-server.database.windows.net,1433;Initial Catalog=devflow-db;Persist Security Info=False;User ID=missadministrator;Password=thisIsKat11;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+  value       = azurerm_key_vault_secret.db_connection_string.value
   sensitive   = true
 }
