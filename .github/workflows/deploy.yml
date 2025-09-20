@@ -61,6 +61,14 @@ jobs:
           echo "webapp_name=$webAppName"   >> $env:GITHUB_OUTPUT
           echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
 
+      - name: Debug Terraform Outputs
+        shell: pwsh
+        run: |
+          Write-Host "Terraform outputs debug:"
+          Write-Host "WebAppName: $($env:GITHUB_OUTPUT)"
+          $db = terraform output -raw devflow_db_connection_string
+          Write-Host "DB Connection String (first 10 chars masked): ${db.Substring(0,10)}****"
+
     outputs:
       WEBAPP_NAME: ${{ steps.infra.outputs.webapp_name }}
       DB_CONN_STRING: ${{ steps.infra.outputs.db_conn_string }}
@@ -150,31 +158,33 @@ jobs:
         run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
 
       # -----------------------------
-      # Run EF Core Migrations
+      # Debug DB Connection
       # -----------------------------
-      - name: Check DB Connection String
+      - name: Debug DB Connection in Build Job
         shell: pwsh
         run: |
-          if ($env:DB_CONNECTION_STRING) {
-          Write-Host "DB_CONNECTION_STRING is available."
-          Write-Host "First 50 chars (masked): $($env:DB_CONNECTION_STRING.Substring(0,50))..."
-          }
-          else {
-          Write-Error "DB_CONNECTION_STRING is NOT available in this step!"
-          }
+          Write-Host "DB_CONNECTION_STRING from Terraform output:"
+          Write-Host "${{ needs.terraform.outputs.DB_CONN_STRING }}"
 
+      # -----------------------------
+      # Run EF Core Migrations
+      # -----------------------------
       - name: Run EF Core Migrations
         shell: pwsh
         run: |
+          # Install dotnet-ef tool
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
 
-          Write-Host "Using DB connection string from Terraform (masked)."
-          $env:DB_CONNECTION_STRING = "${{ needs.terraform.outputs.DB_CONN_STRING }}"
+          # Ensure DB_CONNECTION_STRING is available before running migrations
+          if (-not $env:DB_CONNECTION_STRING) {
+            Write-Error "DB_CONNECTION_STRING is not set!"
+            exit 1
+          }
 
-          dotnet-ef database update `
-          --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
+          Write-Host "Using DB connection string (masked): $($env:DB_CONNECTION_STRING.Substring(0,10))****"
+          dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: Archive Files
         run: |
