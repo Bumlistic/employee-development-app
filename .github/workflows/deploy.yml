@@ -71,7 +71,7 @@ jobs:
 
     outputs:
       WEBAPP_NAME: ${{ steps.infra.outputs.webapp_name }}
-      DB_CONN_STRING: ${{ steps.infra.outputs.db_conn_string }}
+      db_conn_string: ${{ steps.infra.outputs.db_conn_string }} # lowercase to match Terraform output
 
 # -----------------------------
 # SonarCloud Scan Job (Linux)
@@ -119,7 +119,7 @@ jobs:
     needs: [terraform, sonarcloud]
     env:
       WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
-      DB_CONNECTION_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
+      DB_CONNECTION_STRING: ${{ needs.terraform.outputs.db_conn_string }} # lowercase to match Terraform output
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
       DOTNET_CLI_HOME: ${{ github.workspace }}
 
@@ -132,9 +132,6 @@ jobs:
           path: app-code
           fetch-depth: 0
 
-      # -----------------------------
-      # Auto-detect .sln file
-      # -----------------------------
       - name: Find solution file
         id: sln
         shell: pwsh
@@ -157,27 +154,19 @@ jobs:
       - name: Publish Web Application
         run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
 
-      # -----------------------------
-      # Debug DB Connection
-      # -----------------------------
-      - name: Debug DB Connection in Build Job
+      - name: Debug DB Connection
         shell: pwsh
         run: |
           Write-Host "DB_CONNECTION_STRING from Terraform output:"
-          Write-Host "${{ needs.terraform.outputs.DB_CONN_STRING }}"
+          Write-Host "$env:DB_CONNECTION_STRING"
 
-      # -----------------------------
-      # Run EF Core Migrations
-      # -----------------------------
       - name: Run EF Core Migrations
         shell: pwsh
         run: |
-          # Install dotnet-ef tool
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
 
-          # Ensure DB_CONNECTION_STRING is available before running migrations
           if (-not $env:DB_CONNECTION_STRING) {
             Write-Error "DB_CONNECTION_STRING is not set!"
             exit 1
