@@ -6,14 +6,10 @@ on:
       - main
   workflow_dispatch:
 
-# -----------------------------
-# Terraform Deployment Job
-# -----------------------------
 jobs:
   terraform:
     name: Terraform Deployment
     runs-on: windows-latest
-
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
@@ -22,8 +18,7 @@ jobs:
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -44,10 +39,6 @@ jobs:
             -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
             -backend-config="key=${{ env.TF_BACKEND_KEY }}"
 
-      - name: Terraform Plan
-        shell: pwsh
-        run: terraform plan
-
       - name: Terraform Apply
         shell: pwsh
         run: terraform apply -auto-approve
@@ -56,7 +47,7 @@ jobs:
         id: infra
         shell: pwsh
         run: |
-          $webAppName   = terraform output -raw devflow_app_service_name
+          $webAppName = terraform output -raw devflow_app_service_name
           $dbConnString = terraform output -raw devflow_db_connection_string
 
           if (-not $webAppName) { Write-Error "WebAppName is empty!"; exit 1 }
@@ -69,9 +60,6 @@ jobs:
       WEBAPP_NAME: ${{ steps.infra.outputs.webapp_name }}
       DB_CONN_STRING: ${{ steps.infra.outputs.db_conn_string }}
 
-# -----------------------------
-# SonarCloud Scan Job (Linux)
-# -----------------------------
   sonarcloud:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
@@ -80,35 +68,28 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_PROJECT_KEY: workinghardonazure_devflow-employee-management
       SONAR_ORG: workinghardonazure
-
     steps:
-      - name: Checkout App Repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
           repository: Bumlistic/clone-from-azure-app-folder
           token: ${{ secrets.GITHUB_TOKEN }}
           path: app-code
           fetch-depth: 0
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
+      - uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Run SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - uses: SonarSource/sonarcloud-github-action@v2
         with:
           args: >
             -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
             -Dsonar.sources=./app-code
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-# -----------------------------
-# Build & Deploy Job (Windows)
-# -----------------------------
   build-and-deploy:
     name: Build & Deploy App
     runs-on: windows-latest
@@ -120,70 +101,47 @@ jobs:
       DOTNET_CLI_HOME: ${{ github.workspace }}
 
     steps:
-      - name: Checkout App Repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
           repository: Bumlistic/clone-from-azure-app-folder
           token: ${{ secrets.GITHUB_TOKEN }}
           path: app-code
           fetch-depth: 0
 
-      # -----------------------------
-      # Auto-detect .sln file
-      # -----------------------------
       - name: Find solution file
         id: sln
         shell: pwsh
         run: |
           $sln = Get-ChildItem -Path ./app-code -Filter *.sln -Recurse | Select-Object -First 1
-          if (-not $sln) { Write-Error "No .sln file found!" }
+          if (-not $sln) { Write-Error "No .sln file found!"; exit 1 }
           echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
-      - name: Restore NuGet Packages
-        run: dotnet restore ${{ steps.sln.outputs.sln_path }}
+      - run: dotnet restore ${{ steps.sln.outputs.sln_path }}
+      - run: dotnet build ${{ steps.sln.outputs.sln_path }} --configuration Release
+      - run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
 
-      - name: Build Solution
-        run: dotnet build ${{ steps.sln.outputs.sln_path }} --configuration Release
-
-      - name: Publish Web Application
-        run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
-
-      # -----------------------------
-      # Debug DB Connection
-      # -----------------------------
-      - name: Debug DB Connection
+      - name: Validate DB Connection
         shell: pwsh
         run: |
-          Write-Host "DB_CONNECTION_STRING from Terraform output:"
-          Write-Host "$env:DB_CONNECTION_STRING"
-
           if (-not $env:DB_CONNECTION_STRING) {
-            Write-Error "DB_CONNECTION_STRING is empty!"
+            Write-Error "DB_CONNECTION_STRING is empty! Aborting."
             exit 1
           }
+          Write-Host "DB_CONNECTION_STRING is set (masked): $($env:DB_CONNECTION_STRING.Substring(0,10))****"
 
-      # -----------------------------
-      # Run EF Core Migrations
-      # -----------------------------
       - name: Run EF Core Migrations
         shell: pwsh
         run: |
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
-
-          Write-Host "Running EF Core migrations..."
           dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
 
-      # -----------------------------
-      # Archive & Deploy
-      # -----------------------------
-      - name: Archive Files
+      - name: Archive & Deploy
         run: |
           mkdir ${{ runner.temp }}\package
           Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
@@ -197,8 +155,7 @@ jobs:
             --xml
           Set-Content -Path "${{ runner.temp }}\publish-profile.xml" -Value $profile
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v2
+      - uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ env.WEBAPP_NAME }}
           publish-profile: ${{ runner.temp }}\publish-profile.xml
