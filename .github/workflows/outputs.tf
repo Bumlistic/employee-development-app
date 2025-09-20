@@ -32,6 +32,7 @@ output "devflow_key_vault_uri" {
   value       = azurerm_key_vault.devflow_key_vault.vault_uri
 }
 
+# SQL Server connection string for EF Core (from Key Vault)
 output "devflow_db_connection_string" {
   description = "SQL Server connection string for EF Core"
   value       = azurerm_key_vault_secret.db_connection_string.value
