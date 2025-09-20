@@ -15,7 +15,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: ./employee-development-app   # <-- infra folder
+        working-directory: ./employee-development-app   # infra folder
 
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
@@ -63,12 +63,28 @@ jobs:
         id: infra
         shell: pwsh
         run: |
+          # Debug: show all outputs
+          Write-Host "Terraform outputs:"
+          terraform output
+
+          # Safely get outputs
           $webAppName   = terraform output -raw devflow_app_service_name
           $dbConnString = terraform output -raw devflow_db_connection_string
 
-          if (-not $webAppName) { Write-Error "WebAppName is empty!"; exit 1 }
-          if (-not $dbConnString) { Write-Error "DB Connection String is empty!"; exit 1 }
+          if ([string]::IsNullOrEmpty($webAppName)) {
+              Write-Warning "Terraform output 'devflow_app_service_name' is empty. Make sure terraform apply succeeded and the output is defined."
+              exit 1
+          }
 
+          if ([string]::IsNullOrEmpty($dbConnString)) {
+              Write-Warning "Terraform output 'devflow_db_connection_string' is empty. Make sure terraform apply succeeded and the output is defined."
+              exit 1
+          }
+
+          Write-Host "Web App Name: $webAppName"
+          Write-Host "DB Connection String: $dbConnString"
+
+          # Set outputs for downstream jobs
           echo "webapp_name=$webAppName" >> $env:GITHUB_OUTPUT
           echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
 
@@ -108,7 +124,7 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
-            -Dsonar.sources=./employee-user-management   # <-- app folder
+            -Dsonar.sources=./employee-user-management   # app folder
 
   # -----------------------------
   # Build & Deploy Job (Windows)
@@ -119,7 +135,7 @@ jobs:
     needs: [terraform, sonarcloud]
     defaults:
       run:
-        working-directory: ./employee-user-management   # <-- app folder
+        working-directory: ./employee-user-management   # app folder
     env:
       WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
       DB_CONNECTION_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
