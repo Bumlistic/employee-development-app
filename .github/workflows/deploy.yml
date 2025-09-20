@@ -152,17 +152,29 @@ jobs:
       # -----------------------------
       # Run EF Core Migrations
       # -----------------------------
+      - name: Check DB Connection String
+        shell: pwsh
+        run: |
+          if ($env:DB_CONNECTION_STRING) {
+          Write-Host "DB_CONNECTION_STRING is available."
+          Write-Host "First 50 chars (masked): $($env:DB_CONNECTION_STRING.Substring(0,50))..."
+          }
+          else {
+          Write-Error "DB_CONNECTION_STRING is NOT available in this step!"
+          }
+
       - name: Run EF Core Migrations
         shell: pwsh
-        env:
-         DB_CONNECTION_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
         run: |
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
 
           Write-Host "Using DB connection string from Terraform (masked)."
-          dotnet-ef database update --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
+          $env:DB_CONNECTION_STRING = "${{ needs.terraform.outputs.DB_CONN_STRING }}"
+
+          dotnet-ef database update `
+          --project ./app-code/EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: Archive Files
         run: |
