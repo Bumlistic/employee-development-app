@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: . # run Terraform from repo root
+        working-directory: .
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
@@ -19,33 +19,52 @@ jobs:
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: latest
+
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - shell: pwsh
         run: terraform init `
           -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
           -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
           -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
           -backend-config="key=${{ env.TF_BACKEND_KEY }}"
+
       - shell: pwsh
         run: terraform plan
+
       - shell: pwsh
         run: terraform apply -auto-approve
+
       - shell: pwsh
         run: terraform refresh
+
       - shell: pwsh
         run: terraform output
+
       - id: infra
         shell: pwsh
         run: |
           $webAppName   = terraform output -raw devflow_app_service_name
           $dbConnString = terraform output -raw devflow_db_connection_string
+
+          Write-Host "✅ Terraform Outputs:"
+          Write-Host "Web App Name: $webAppName"
+          Write-Host "DB Connection String: $dbConnString"
+
+          if (-not $webAppName -or -not $dbConnString) {
+            Write-Error "❌ One or more required outputs are missing. Aborting..."
+            exit 1
+          }
+
           echo "webapp_name=$webAppName" >> $env:GITHUB_OUTPUT
           echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
+
     outputs:
       WEBAPP_NAME: ${{ steps.infra.outputs.webapp_name }}
       DB_CONN_STRING: ${{ steps.infra.outputs.db_conn_string }}
@@ -59,10 +78,12 @@ jobs:
       SONAR_ORG: workinghardonazure
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'temurin'
+
       - uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -85,34 +106,48 @@ jobs:
       DOTNET_CLI_HOME: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
+
       - id: sln
         shell: pwsh
         run: |
           $sln = Get-ChildItem -Path . -Filter *.sln -Recurse | Select-Object -First 1
           echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
+
       - run: dotnet restore ${{ steps.sln.outputs.sln_path }}
       - run: dotnet build ${{ steps.sln.outputs.sln_path }} --configuration Release
       - run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
+
       - shell: pwsh
         run: |
-          Write-Host "DB_CONNECTION_STRING: $env:DB_CONNECTION_STRING"
-          if (-not $env:DB_CONNECTION_STRING) { exit 1 }
+          Write-Host "🧪 DB_CONNECTION_STRING: $env:DB_CONNECTION_STRING"
+          if (-not $env:DB_CONNECTION_STRING) {
+            Write-Error "❌ DB_CONNECTION_STRING is not set. Failing early..."
+            exit 1
+          }
+
       - shell: pwsh
         run: |
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
+
       - run: |
           mkdir ${{ runner.temp }}\package
           Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
+
       - shell: pwsh
         run: |
-          $profile = az webapp deployment list-publishing-profiles --name $env:WEBAPP_NAME --resource-group $env:RESOURCE_GROUP_NAME --xml
+          $profile = az webapp deployment list-publishing-profiles `
+            --name $env:WEBAPP_NAME `
+            --resource-group $env:RESOURCE_GROUP_NAME `
+            --xml
           Set-Content -Path "${{ runner.temp }}\publish-profile.xml" -Value $profile
+
       - uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ env.WEBAPP_NAME }}
