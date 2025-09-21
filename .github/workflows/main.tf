@@ -73,7 +73,7 @@ resource "azurerm_windows_web_app" "webapp" {
     "WEBSITE_RUN_FROM_PACKAGE"                = "1"
     "ASPNETCORE_ENVIRONMENT"                  = "Production"
     "KeyVaultUrl"                             = azurerm_key_vault.kv.vault_uri
-    "ConnectionStrings__DefaultConnection"   = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.db_conn_string.id})"
+    "ConnectionStrings__DefaultConnectionSecretName"   = "DbConnectionString"
   }
 }
 
