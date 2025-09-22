@@ -1,0 +1,13 @@
+# Ignore Terraform directories and state files
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+
+# Ignore other common files you might want to exclude (optional)
+# .vs/
+# bin/
+# obj/
+# *.user
+# *.suo
+# *.cache
