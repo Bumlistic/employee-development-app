@@ -86,3 +86,12 @@ resource "azurerm_key_vault_access_policy" "webapp_policy" {
 
   depends_on = [azurerm_windows_web_app.webapp]
 }
+
+resource "azurerm_key_vault_access_policy" "terraform_sp" {
+  key_vault_id = azurerm_key_vault.kv.id
+  tenant_id    = var.tenant_id
+  object_id    = var.github_actions_sp_object_id
+
+  secret_permissions = ["get", "list", "set"]
+  key_permissions    = ["get", "list"]
+}
