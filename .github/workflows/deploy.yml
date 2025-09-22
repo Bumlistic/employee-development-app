@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: ./infra
+        working-directory: ./infra   # <- Make sure this is set to your infra folder
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
@@ -23,7 +23,6 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: latest
-          terraform_wrapper: false   # <-- disable the wrapper
 
       - uses: azure/login@v2
         with:
@@ -37,25 +36,23 @@ jobs:
           -backend-config="key=${{ env.TF_BACKEND_KEY }}"
 
       - shell: pwsh
-        run: terraform plan `
-          -var "tenant_id=${{ secrets.AZURE_TENANT_ID }}" `
-          -var "github_actions_sp_object_id=${{ secrets.AZURE_SP_OBJECT_ID }}"
+        run: terraform plan
 
       - shell: pwsh
-        run: terraform apply -auto-approve `
-          -var "tenant_id=${{ secrets.AZURE_TENANT_ID }}" `
-          -var "github_actions_sp_object_id=${{ secrets.AZURE_SP_OBJECT_ID }}"
+        run: terraform apply -auto-approve
 
       - shell: pwsh
-        run: terraform output
+        run: terraform refresh
+
+      # Debug outputs to confirm terraform outputs are working
+      - shell: pwsh
+        run: |
+          Write-Host "DEBUG: App Name = $(terraform output -raw devflow_app_service_name)"
+          Write-Host "DEBUG: DB Conn = $(terraform output -raw devflow_db_connection_string)"
 
       - id: infra
         shell: pwsh
         run: |
-          # Debug: Print outputs directly
-          Write-Host "DEBUG: App Name = $(terraform output -raw devflow_app_service_name)"
-          Write-Host "DEBUG: DB Conn = $(terraform output -raw devflow_db_connection_string)"
-
           $webAppName   = terraform output -raw devflow_app_service_name
           $dbConnString = terraform output -raw devflow_db_connection_string
 
@@ -74,6 +71,7 @@ jobs:
     outputs:
       WEBAPP_NAME: ${{ steps.infra.outputs.webapp_name }}
       DB_CONN_STRING: ${{ steps.infra.outputs.db_conn_string }}
+
 
   sonarcloud:
     runs-on: ubuntu-latest
