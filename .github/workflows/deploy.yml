@@ -17,7 +17,7 @@ jobs:
       TF_BACKEND_CONTAINER: ${{ secrets.TF_BACKEND_CONTAINER }}
       TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -25,31 +25,18 @@ jobs:
         with:
           terraform_version: latest
 
-      - uses: azure/login@v2
+      - name: 🔐 Azure Login
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Validate SP Permissions & Subscription
+      - name: 🧪 Check Azure Account Info
         shell: pwsh
         run: |
           Write-Host "🟢 az account info:"
           az account show
 
-          Write-Host "🟢 Checking role assignments of SP"
-          $spObjectId = az ad sp show --id $(az account show --query user.name -o tsv) --query objectId -o tsv
-          Write-Host "Service Principal Object ID: $spObjectId"
-          az role assignment list --assignee $spObjectId --scope /subscriptions/${{ env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.TF_BACKEND_RESOURCE_GROUP }} --output table
-
-      - name: Debug Azure Storage Access
-        shell: pwsh
-        run: |
-          Write-Host "🟢 Storage Account Listing:"
-          az storage account show --name $env:TF_BACKEND_STORAGE_ACCOUNT --resource-group $env:TF_BACKEND_RESOURCE_GROUP
-
-          Write-Host "🟢 Storage Account Keys:"
-          az storage account keys list --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --resource-group $env:TF_BACKEND_RESOURCE_GROUP --query '[0].value' -o tsv
-
-      - name: Terraform Init with Backend Config
+      - name: 🚀 Terraform Init
         shell: pwsh
         run: |
           terraform init `
@@ -57,54 +44,43 @@ jobs:
             -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
             -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
             -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
-            -backend-config="use_azuread_auth=true" `
-            -input=false `
-            -no-color `
-            -upgrade
+          || { Write-Error "❌ terraform init failed. Aborting..."; exit 1 }
 
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ terraform init failed. Check backend-auth with Azure AD, permissions, subscription, resource group, storage account."
-            exit 1
-          }
-
-      - name: Terraform Plan
+      - name: 📐 Terraform Plan
         shell: pwsh
-        run: |
-          terraform plan
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ terraform plan failed."
-            exit 1
-          }
+        run: terraform plan
 
-      - name: Terraform Apply
+      - name: 🏗️ Terraform Apply
         shell: pwsh
-        run: |
-          terraform apply -auto-approve
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ terraform apply failed."
-            exit 1
-          }
+        run: terraform apply -auto-approve
 
-      - name: Terraform Show & State List
+      - name: 🔄 Terraform Refresh
         shell: pwsh
-        run: |
-          Write-Host "🌍 Inspecting terraform state:"
-          terraform show
-          terraform state list
+        run: terraform refresh
 
-      - id: terraform-outputs
+      - name: 📝 Terraform Outputs (Debug)
         shell: pwsh
         run: |
           Write-Host "📝 Running terraform output -json for debugging:"
           $outputsJson = terraform output -json
-          if ([string]::IsNullOrEmpty($outputsJson)) {
+          if (-not $outputsJson) {
             Write-Error "❌ terraform output -json returned empty!"
             exit 1
           }
-          Write-Host "Outputs JSON: $outputsJson"
+          Write-Host "Terraform Outputs JSON:"
+          Write-Output $outputsJson
+
+      - id: infra
+        name: ✅ Extract Terraform Outputs
+        shell: pwsh
+        run: |
+          $outputsJson = terraform output -json
+          if (-not $outputsJson) {
+            Write-Error "❌ terraform output -json returned empty!"
+            exit 1
+          }
 
           $outputs = $outputsJson | ConvertFrom-Json
-
           $webAppName = $outputs.devflow_app_service_name.value
           $dbConnString = $outputs.devflow_db_connection_string.value
 
@@ -112,7 +88,7 @@ jobs:
           Write-Host "Web App Name: $webAppName"
           Write-Host "DB Connection String: $dbConnString"
 
-          if ([string]::IsNullOrEmpty($webAppName) -or [string]::IsNullOrEmpty($dbConnString)) {
+          if (-not $webAppName -or -not $dbConnString) {
             Write-Error "❌ One or more required outputs are missing. Aborting..."
             exit 1
           }
@@ -121,8 +97,10 @@ jobs:
           echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
 
     outputs:
-      WEBAPP_NAME: ${{ steps.terraform-outputs.outputs.webapp_name }}
-      DB_CONN_STRING: ${{ steps.terraform-outputs.outputs.db_conn_string }}
+      WEBAPP_NAME: ${{ steps.infra.outputs.webapp_name }}
+      DB_CONN_STRING: ${{ steps.infra.outputs.db_conn_string }}
+
+# ---------------- SONAR JOB -----------------
 
   sonarcloud:
     runs-on: ubuntu-latest
@@ -131,6 +109,7 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_PROJECT_KEY: workinghardonazure_devflow-employee-management
       SONAR_ORG: workinghardonazure
+
     steps:
       - uses: actions/checkout@v4
 
@@ -148,6 +127,8 @@ jobs:
             -Dsonar.organization=${{ env.SONAR_ORG }}
             -Dsonar.sources=./employee-user-management
 
+# ---------------- DEPLOY JOB -----------------
+
   build-and-deploy:
     runs-on: windows-latest
     needs: [terraform, sonarcloud]
@@ -159,6 +140,7 @@ jobs:
       DB_CONNECTION_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
       DOTNET_CLI_HOME: ${{ github.workspace }}
+
     steps:
       - uses: actions/checkout@v4
 
