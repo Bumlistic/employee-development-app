@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: ./infra   # Ensure your terraform files are here
+        working-directory: ./infra   # Ensure all terraform commands run in ./infra folder
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
@@ -28,19 +28,6 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Debug step to validate storage backend access
-      - name: Debug Azure Storage Access
-        shell: pwsh
-        run: |
-          Write-Host "🟢 Checking Storage Account and Container Access..."
-
-          az storage account list --resource-group $env:TF_BACKEND_RESOURCE_GROUP --output table
-
-          $storageKey = az storage account keys list --resource-group $env:TF_BACKEND_RESOURCE_GROUP --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --query '[0].value' -o tsv
-          Write-Host "🟢 Using Storage Key: $storageKey"
-
-          az storage container list --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --account-key $storageKey --output table
-
       - shell: pwsh
         run: terraform init `
           -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
@@ -54,20 +41,22 @@ jobs:
       - shell: pwsh
         run: terraform apply -auto-approve
 
-      - shell: pwsh
-        run: terraform refresh
-
-      # Debug outputs to confirm terraform outputs are working
-      - shell: pwsh
-        run: |
-          Write-Host "DEBUG: App Name = $(terraform output -raw devflow_app_service_name)"
-          Write-Host "DEBUG: DB Conn = $(terraform output -raw devflow_db_connection_string)"
-
-      - id: infra
+      # <<<<<< NEW improved output fetching and validation step >>>>>> 
+      - id: terraform-outputs
         shell: pwsh
         run: |
-          $webAppName   = terraform output -raw devflow_app_service_name
-          $dbConnString = terraform output -raw devflow_db_connection_string
+          Write-Host "📝 Running terraform output -json for debugging:"
+          $outputsJson = terraform output -json
+          if (-not $outputsJson) {
+            Write-Error "❌ terraform output -json returned empty!"
+            exit 1
+          }
+          Write-Host $outputsJson
+
+          $outputs = $outputsJson | ConvertFrom-Json
+
+          $webAppName = $outputs.devflow_app_service_name.value
+          $dbConnString = $outputs.devflow_db_connection_string.value
 
           Write-Host "✅ Terraform Outputs:"
           Write-Host "Web App Name: $webAppName"
@@ -82,8 +71,8 @@ jobs:
           echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
 
     outputs:
-      WEBAPP_NAME: ${{ steps.infra.outputs.webapp_name }}
-      DB_CONN_STRING: ${{ steps.infra.outputs.db_conn_string }}
+      WEBAPP_NAME: ${{ steps.terraform-outputs.outputs.webapp_name }}
+      DB_CONN_STRING: ${{ steps.terraform-outputs.outputs.db_conn_string }}
 
   sonarcloud:
     runs-on: ubuntu-latest
