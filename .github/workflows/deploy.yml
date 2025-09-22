@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: ./infra   # <-- Terraform directory
+        working-directory: ./infra   # Infra folder
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
@@ -33,31 +33,36 @@ jobs:
           -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
           -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
           -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
-          -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
-          -input=false -no-color
+          -backend-config="key=${{ env.TF_BACKEND_KEY }}"
 
       - shell: pwsh
-        run: terraform plan -input=false -no-color
+        run: terraform plan
 
       - shell: pwsh
-        run: terraform apply -auto-approve -input=false -no-color
+        run: terraform apply -auto-approve
 
       - shell: pwsh
-        run: terraform refresh -input=false -no-color
+        run: terraform refresh
 
-      # Debug: Print current dir, files, and terraform output
+      # Debug: confirm directory, files, and terraform outputs
       - shell: pwsh
         run: |
-          Write-Host "PWD: $(pwd)"
-          Write-Host "Files in current directory:"
+          Write-Host "Current Directory: $(pwd)"
+          Write-Host "Listing files:"
           Get-ChildItem
-          Write-Host "Terraform outputs:"
-          terraform output -no-color
 
+          Write-Host "Raw terraform output:"
+          terraform output
+
+      # Parse and validate terraform outputs safely
       - id: infra
         shell: pwsh
         run: |
           $outputsJson = terraform output -json
+          if ([string]::IsNullOrEmpty($outputsJson)) {
+            Write-Error "❌ terraform output -json is empty!"
+            exit 1
+          }
           Write-Host "Terraform Outputs JSON: $outputsJson"
 
           $outputs = ConvertFrom-Json $outputsJson
