@@ -17,6 +17,7 @@ jobs:
       TF_BACKEND_CONTAINER: ${{ secrets.TF_BACKEND_CONTAINER }}
       TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
+      KEY_VAULT_NAME: ${{ secrets.KEY_VAULT_NAME }}
 
     steps:
       - uses: actions/checkout@v4
@@ -30,22 +31,6 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 🧪 Check Azure Account Info
-        shell: pwsh
-        run: |
-          Write-Host "🟢 az account info:"
-          az account show
-
-      - name: 🔑 Test Key Vault Access
-        shell: pwsh
-        run: |
-          Write-Host "Testing access to Key Vault secrets..."
-          az keyvault secret list --vault-name bumlistivkeyvault
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ Failed to access Key Vault secrets. Check SP permissions and access policies."
-            exit 1
-          }
-
       - name: 🚀 Terraform Init
         shell: pwsh
         run: |
@@ -53,8 +38,7 @@ jobs:
             -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
             -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
             -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
-            -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
-          || { Write-Error "❌ terraform init failed. Aborting..."; exit 1 }
+            -backend-config="key=${{ env.TF_BACKEND_KEY }}"
 
       - name: 📐 Terraform Plan
         shell: pwsh
@@ -64,42 +48,23 @@ jobs:
         shell: pwsh
         run: terraform apply -auto-approve
 
-      - name: 🔄 Terraform Refresh
-        shell: pwsh
-        run: terraform refresh
-
-      - name: 📝 Terraform Outputs (Debug)
+      - name: 🔎 Fetch App Name and DB Connection from Azure
+        id: outputs
         shell: pwsh
         run: |
-          Write-Host "📝 Running terraform output -json for debugging:"
-          $outputsJson = terraform output -json
-          if (-not $outputsJson) {
-            Write-Error "❌ terraform output -json returned empty!"
-            exit 1
-          }
-          Write-Host "Terraform Outputs JSON:"
-          Write-Output $outputsJson
-
-      - id: infra
-        name: ✅ Extract Terraform Outputs
-        shell: pwsh
-        run: |
-          $outputsJson = terraform output -json
-          if (-not $outputsJson) {
-            Write-Error "❌ terraform output -json returned empty!"
+          $webAppName = az webapp list --resource-group $env:RESOURCE_GROUP_NAME --query "[0].name" -o tsv
+          if (-not $webAppName) {
+            Write-Error "❌ Could not find any Web App in the resource group."
             exit 1
           }
 
-          $outputs = $outputsJson | ConvertFrom-Json
-          $webAppName = $outputs.devflow_app_service_name.value
-          $dbConnString = $outputs.devflow_db_connection_string.value
+          $dbConnString = az keyvault secret show `
+            --vault-name $env:KEY_VAULT_NAME `
+            --name DbConnectionString `
+            --query value -o tsv
 
-          Write-Host "✅ Terraform Outputs:"
-          Write-Host "Web App Name: $webAppName"
-          Write-Host "DB Connection String: $dbConnString"
-
-          if (-not $webAppName -or -not $dbConnString) {
-            Write-Error "❌ One or more required outputs are missing. Aborting..."
+          if (-not $dbConnString) {
+            Write-Error "❌ Could not fetch DB Connection String from Key Vault."
             exit 1
           }
 
@@ -107,8 +72,8 @@ jobs:
           echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
 
     outputs:
-      WEBAPP_NAME: ${{ steps.infra.outputs.webapp_name }}
-      DB_CONN_STRING: ${{ steps.infra.outputs.db_conn_string }}
+      WEBAPP_NAME: ${{ steps.outputs.outputs.webapp_name }}
+      DB_CONN_STRING: ${{ steps.outputs.outputs.db_conn_string }}
 
 # ---------------- SONAR JOB -----------------
 
