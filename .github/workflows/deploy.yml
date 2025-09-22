@@ -23,6 +23,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: latest
+          terraform_wrapper: false   # <-- disable the wrapper
 
       - uses: azure/login@v2
         with:
@@ -46,18 +47,15 @@ jobs:
           -var "github_actions_sp_object_id=${{ secrets.AZURE_SP_OBJECT_ID }}"
 
       - shell: pwsh
-        run: terraform refresh
-
-      - shell: pwsh
         run: terraform output
 
       - id: infra
         shell: pwsh
         run: |
-          # 🔍 Debug: Print outputs directly to validate
+          # Debug: Print outputs directly
           Write-Host "DEBUG: App Name = $(terraform output -raw devflow_app_service_name)"
           Write-Host "DEBUG: DB Conn = $(terraform output -raw devflow_db_connection_string)"
-        
+
           $webAppName   = terraform output -raw devflow_app_service_name
           $dbConnString = terraform output -raw devflow_db_connection_string
 
