@@ -136,3 +136,23 @@ variable "github_actions_sp_object_id" {
   default = "0520749c-141a-4241-a368-cb94949cb6b3"
 }
 
+variable "devflow_storage_account_name" {
+  type    = string
+  default = "storageforbumlistic3"
+}
+
+variable "devflow_container_name" {
+  type    = string
+  default = "devflow-project-container"
+}
+
+variable "devflow_state_key" {
+  type    = string
+  default = "devflow.tfstate"
+}
+
+variable "devflow_storage_resource_group_name" {
+  type        = string
+  description = "Storage resource group name"
+  default     = "devflow-storage-infra-rg"
+}
