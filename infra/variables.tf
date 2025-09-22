@@ -127,10 +127,12 @@ variable "devflow_app_service_plan_sku_name" {
 variable "tenant_id" {
   description = "Azure Tenant ID"
   type        = string
+  default = "4a6b9a6c-daf4-4521-8892-e6a191c9ea04"
 }
 
 variable "github_actions_sp_object_id" {
   description = "Object ID of the GitHub Actions Service Principal"
   type        = string
+  default = "0520749c-141a-4241-a368-cb94949cb6b3"
 }
 
