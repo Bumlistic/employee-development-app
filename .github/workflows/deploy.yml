@@ -10,13 +10,14 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: ./infra   # Ensure all terraform commands run in ./infra folder
+        working-directory: ./infra
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
       TF_BACKEND_CONTAINER: ${{ secrets.TF_BACKEND_CONTAINER }}
       TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,30 +29,70 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - shell: pwsh
-        run: terraform init `
-          -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
-          -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
-          -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
-          -backend-config="key=${{ env.TF_BACKEND_KEY }}"
+      - name: Debug Azure Storage Access
+        shell: pwsh
+        run: |
+          Write-Host "🟢 Checking Storage Account and Container Access..."
+          az storage account list --resource-group $env:TF_BACKEND_RESOURCE_GROUP --output table
 
-      - shell: pwsh
-        run: terraform plan
+          $storageKey = az storage account keys list --resource-group $env:TF_BACKEND_RESOURCE_GROUP --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --query '[0].value' -o tsv
+          Write-Host "🟢 Using Storage Key: $storageKey"
 
-      - shell: pwsh
-        run: terraform apply -auto-approve
+          az storage container list --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --account-key $storageKey --output table
 
-      # <<<<<< NEW improved output fetching and validation step >>>>>> 
+      - name: Terraform Init with Debug
+        shell: pwsh
+        run: |
+          terraform init `
+            -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
+            -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
+            -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
+            -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
+            -input=false `
+            -no-color `
+            -upgrade
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ terraform init failed. Aborting..."
+            exit 1
+          }
+
+      - name: Terraform Plan
+        shell: pwsh
+        run: |
+          terraform plan
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ terraform plan failed. Aborting..."
+            exit 1
+          }
+
+      - name: Terraform Apply
+        shell: pwsh
+        run: |
+          terraform apply -auto-approve
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ terraform apply failed. Aborting..."
+            exit 1
+          }
+
+      # >> New diagnostics to inspect state
+      - name: Terraform Show State
+        shell: pwsh
+        run: |
+          Write-Host "🧐 Inspecting terraform state..."
+          terraform show
+          Write-Host "🧐 Listing resources in state:"
+          terraform state list
+
       - id: terraform-outputs
         shell: pwsh
         run: |
           Write-Host "📝 Running terraform output -json for debugging:"
           $outputsJson = terraform output -json
-          if (-not $outputsJson) {
+          if ([string]::IsNullOrEmpty($outputsJson)) {
             Write-Error "❌ terraform output -json returned empty!"
             exit 1
           }
-          Write-Host $outputsJson
+          Write-Host "Outputs JSON: $outputsJson"
 
           $outputs = $outputsJson | ConvertFrom-Json
 
@@ -62,7 +103,7 @@ jobs:
           Write-Host "Web App Name: $webAppName"
           Write-Host "DB Connection String: $dbConnString"
 
-          if (-not $webAppName -or -not $dbConnString) {
+          if ([string]::IsNullOrEmpty($webAppName) -or [string]::IsNullOrEmpty($dbConnString)) {
             Write-Error "❌ One or more required outputs are missing. Aborting..."
             exit 1
           }
