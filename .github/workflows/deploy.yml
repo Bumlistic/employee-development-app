@@ -36,6 +36,16 @@ jobs:
           Write-Host "🟢 az account info:"
           az account show
 
+      - name: 🔑 Test Key Vault Access
+        shell: pwsh
+        run: |
+          Write-Host "Testing access to Key Vault secrets..."
+          az keyvault secret list --vault-name bumlistivkeyvault
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ Failed to access Key Vault secrets. Check SP permissions and access policies."
+            exit 1
+          }
+
       - name: 🚀 Terraform Init
         shell: pwsh
         run: |
