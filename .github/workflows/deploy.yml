@@ -29,18 +29,27 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Validate SP Permissions & Subscription
+        shell: pwsh
+        run: |
+          Write-Host "🟢 az account info:"
+          az account show
+
+          Write-Host "🟢 Checking role assignments of SP"
+          $spObjectId = az ad sp show --id $(az account show --query user.name -o tsv) --query objectId -o tsv
+          Write-Host "Service Principal Object ID: $spObjectId"
+          az role assignment list --assignee $spObjectId --scope /subscriptions/${{ env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.TF_BACKEND_RESOURCE_GROUP }} --output table
+
       - name: Debug Azure Storage Access
         shell: pwsh
         run: |
-          Write-Host "🟢 Checking Storage Account and Container Access..."
-          az storage account list --resource-group $env:TF_BACKEND_RESOURCE_GROUP --output table
+          Write-Host "🟢 Storage Account Listing:"
+          az storage account show --name $env:TF_BACKEND_STORAGE_ACCOUNT --resource-group $env:TF_BACKEND_RESOURCE_GROUP
 
-          $storageKey = az storage account keys list --resource-group $env:TF_BACKEND_RESOURCE_GROUP --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --query '[0].value' -o tsv
-          Write-Host "🟢 Using Storage Key: $storageKey"
+          Write-Host "🟢 Storage Account Keys:"
+          az storage account keys list --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --resource-group $env:TF_BACKEND_RESOURCE_GROUP --query '[0].value' -o tsv
 
-          az storage container list --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --account-key $storageKey --output table
-
-      - name: Terraform Init with Debug
+      - name: Terraform Init with Backend Config
         shell: pwsh
         run: |
           terraform init `
@@ -48,11 +57,13 @@ jobs:
             -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
             -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
             -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
+            -backend-config="use_azuread_auth=true" `
             -input=false `
             -no-color `
             -upgrade
+
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ terraform init failed. Aborting..."
+            Write-Error "❌ terraform init failed. Check backend-auth with Azure AD, permissions, subscription, resource group, storage account."
             exit 1
           }
 
@@ -61,7 +72,7 @@ jobs:
         run: |
           terraform plan
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ terraform plan failed. Aborting..."
+            Write-Error "❌ terraform plan failed."
             exit 1
           }
 
@@ -70,17 +81,15 @@ jobs:
         run: |
           terraform apply -auto-approve
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ terraform apply failed. Aborting..."
+            Write-Error "❌ terraform apply failed."
             exit 1
           }
 
-      # >> New diagnostics to inspect state
-      - name: Terraform Show State
+      - name: Terraform Show & State List
         shell: pwsh
         run: |
-          Write-Host "🧐 Inspecting terraform state..."
+          Write-Host "🌍 Inspecting terraform state:"
           terraform show
-          Write-Host "🧐 Listing resources in state:"
           terraform state list
 
       - id: terraform-outputs
