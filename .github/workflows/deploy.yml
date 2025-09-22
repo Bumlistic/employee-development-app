@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: ./infra   # Infra folder
+        working-directory: ./infra   # Ensure this is your infra folder where Terraform files and state are
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
@@ -20,41 +20,64 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: latest
 
-      - uses: azure/login@v2
+      - name: Azure Login
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - shell: pwsh
-        run: terraform init `
-          -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
-          -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
-          -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
-          -backend-config="key=${{ env.TF_BACKEND_KEY }}"
+      - name: Terraform Init
+        shell: pwsh
+        run: |
+          terraform init `
+            -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
+            -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
+            -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
+            -backend-config="key=${{ env.TF_BACKEND_KEY }}"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "terraform init failed"
+            exit 1
+          }
 
-      - shell: pwsh
-        run: terraform plan
+      - name: Terraform Plan
+        shell: pwsh
+        run: |
+          terraform plan
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "terraform plan failed"
+            exit 1
+          }
 
-      - shell: pwsh
-        run: terraform apply -auto-approve
+      - name: Terraform Apply
+        shell: pwsh
+        run: |
+          terraform apply -auto-approve
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "terraform apply failed"
+            exit 1
+          }
 
-      - shell: pwsh
-        run: terraform refresh
+      - name: Terraform Refresh
+        shell: pwsh
+        run: |
+          terraform refresh
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "terraform refresh failed"
+            exit 1
+          }
 
-      # Debug: confirm directory, files, and terraform outputs
-      - shell: pwsh
+      - name: Show Terraform State
+        shell: pwsh
         run: |
           Write-Host "Current Directory: $(pwd)"
-          Write-Host "Listing files:"
-          Get-ChildItem
+          Write-Host "Files in directory:"
+          Get-ChildItem -Recurse | ForEach-Object { Write-Host $_.FullName }
+          terraform show
 
-          Write-Host "Raw terraform output:"
-          terraform output
-
-      # Parse and validate terraform outputs safely
       - id: infra
         shell: pwsh
         run: |
