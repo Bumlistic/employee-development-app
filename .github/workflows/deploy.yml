@@ -10,14 +10,13 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: ./infra
+        working-directory: ./infra   # Ensure your terraform files are here
     env:
       TF_BACKEND_RESOURCE_GROUP: ${{ secrets.TF_BACKEND_RESOURCE_GROUP }}
       TF_BACKEND_STORAGE_ACCOUNT: ${{ secrets.TF_BACKEND_STORAGE_ACCOUNT }}
       TF_BACKEND_CONTAINER: ${{ secrets.TF_BACKEND_CONTAINER }}
       TF_BACKEND_KEY: ${{ secrets.TF_BACKEND_KEY }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,32 +28,25 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Azure Login Validation
+      # Debug step to validate storage backend access
+      - name: Debug Azure Storage Access
         shell: pwsh
         run: |
-          Write-Host "🟢 Azure Account Info:"
-          az account show
+          Write-Host "🟢 Checking Storage Account and Container Access..."
 
-          Write-Host "🟢 Checking Role Assignments for Service Principal on Backend Resource Group:"
-          $spName = az account show --query user.name -o tsv
-          az role assignment list --assignee $spName --scope /subscriptions/${{ env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.TF_BACKEND_RESOURCE_GROUP }} --output table
+          az storage account list --resource-group $env:TF_BACKEND_RESOURCE_GROUP --output table
 
-      - name: Terraform Init with Debug
-        shell: pwsh
-        run: |
-          terraform init `
-            -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
-            -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
-            -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
-            -backend-config="key=${{ env.TF_BACKEND_KEY }}" `
-            -input=false `
-            -no-color `
-            -upgrade
+          $storageKey = az storage account keys list --resource-group $env:TF_BACKEND_RESOURCE_GROUP --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --query '[0].value' -o tsv
+          Write-Host "🟢 Using Storage Key: $storageKey"
 
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ terraform init failed. Please check backend configuration and permissions."
-            exit 1
-          }
+          az storage container list --account-name $env:TF_BACKEND_STORAGE_ACCOUNT --account-key $storageKey --output table
+
+      - shell: pwsh
+        run: terraform init `
+          -backend-config="resource_group_name=${{ env.TF_BACKEND_RESOURCE_GROUP }}" `
+          -backend-config="storage_account_name=${{ env.TF_BACKEND_STORAGE_ACCOUNT }}" `
+          -backend-config="container_name=${{ env.TF_BACKEND_CONTAINER }}" `
+          -backend-config="key=${{ env.TF_BACKEND_KEY }}"
 
       - shell: pwsh
         run: terraform plan
@@ -64,6 +56,12 @@ jobs:
 
       - shell: pwsh
         run: terraform refresh
+
+      # Debug outputs to confirm terraform outputs are working
+      - shell: pwsh
+        run: |
+          Write-Host "DEBUG: App Name = $(terraform output -raw devflow_app_service_name)"
+          Write-Host "DEBUG: DB Conn = $(terraform output -raw devflow_db_connection_string)"
 
       - id: infra
         shell: pwsh
