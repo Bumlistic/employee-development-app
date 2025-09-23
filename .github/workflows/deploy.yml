@@ -7,6 +7,7 @@ on:
 
 jobs:
   terraform:
+    name: 🌍 Terraform Infrastructure Deployment
     runs-on: windows-latest
     defaults:
       run:
@@ -48,7 +49,7 @@ jobs:
         shell: pwsh
         run: terraform apply -auto-approve
 
-      - name: 🔎 Fetch App Name and DB Connection from Azure
+      - name: 🔎 Fetch Web App Name and DB Connection String
         id: outputs
         shell: pwsh
         run: |
@@ -61,7 +62,7 @@ jobs:
           $dbConnString = az keyvault secret show `
             --vault-name $env:KEY_VAULT_NAME `
             --name DbConnectionString `
-            --query value -o tsv
+            --query value -o tsv 2>$null
 
           if (-not $dbConnString) {
             Write-Error "❌ Could not fetch DB Connection String from Key Vault."
@@ -78,6 +79,7 @@ jobs:
 # ---------------- SONAR JOB -----------------
 
   sonarcloud:
+    name: 🧼 SonarCloud Code Analysis
     runs-on: ubuntu-latest
     needs: terraform
     env:
@@ -93,7 +95,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - uses: SonarSource/sonarcloud-github-action@v2
+      - name: 🔍 Run SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
@@ -101,10 +104,12 @@ jobs:
             -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
             -Dsonar.sources=./employee-user-management
+            -Dsonar.host.url=https://sonarcloud.io
 
 # ---------------- DEPLOY JOB -----------------
 
   build-and-deploy:
+    name: 🚀 Build & Deploy Web App
     runs-on: windows-latest
     needs: [terraform, sonarcloud]
     defaults:
@@ -133,26 +138,29 @@ jobs:
       - run: dotnet build ${{ steps.sln.outputs.sln_path }} --configuration Release
       - run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
 
-      - shell: pwsh
+      - name: 🧪 Verify DB Connection String
+        shell: pwsh
         run: |
-          Write-Host "🧪 DB_CONNECTION_STRING: $env:DB_CONNECTION_STRING"
           if (-not $env:DB_CONNECTION_STRING) {
             Write-Error "❌ DB_CONNECTION_STRING is not set. Failing early..."
             exit 1
           }
 
-      - shell: pwsh
+      - name: 🗃️ Apply EF Core Migrations
+        shell: pwsh
         run: |
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
 
-      - run: |
+      - name: 📦 Package App for Deployment
+        run: |
           mkdir ${{ runner.temp }}\package
           Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
 
-      - shell: pwsh
+      - name: 🔐 Get Azure Web App Publishing Profile
+        shell: pwsh
         run: |
           $profile = az webapp deployment list-publishing-profiles `
             --name $env:WEBAPP_NAME `
@@ -160,7 +168,8 @@ jobs:
             --xml
           Set-Content -Path "${{ runner.temp }}\publish-profile.xml" -Value $profile
 
-      - uses: azure/webapps-deploy@v2
+      - name: 🚀 Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ env.WEBAPP_NAME }}
           publish-profile: ${{ runner.temp }}\publish-profile.xml
