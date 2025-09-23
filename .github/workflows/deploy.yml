@@ -54,11 +54,6 @@ jobs:
         shell: pwsh
         run: |
           $webAppName = az webapp list --resource-group $env:RESOURCE_GROUP_NAME --query "[0].name" -o tsv
-          if (-not $webAppName) {
-            Write-Error "❌ Could not find any Web App in the resource group."
-            exit 1
-          }
-
           echo "webapp_name=$webAppName" >> $env:GITHUB_OUTPUT
 
     outputs:
@@ -122,7 +117,7 @@ jobs:
         run: |
           $conn = az keyvault secret show `
             --vault-name $env:KEY_VAULT_NAME `
-            --name DbConnectionString `
+            --name ConnectionStrings--EmployeeDbConnection `
             --query value -o tsv
 
           if (-not $conn) {
@@ -161,30 +156,18 @@ jobs:
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
-
-          # Set connection string as environment variable for migrations
           $env:ConnectionStrings__DefaultConnection = $env:DB_CONN_STRING
 
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: 📦 Package App for Deployment
-        shell: pwsh
         run: |
-          mkdir "${{ runner.temp }}\package"
+          mkdir ${{ runner.temp }}\package
           Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
-
-      - name: 🔐 Get Azure Web App Publishing Profile
-        shell: pwsh
-        run: |
-          $profile = az webapp deployment list-publishing-profiles `
-            --name $env:WEBAPP_NAME `
-            --resource-group $env:RESOURCE_GROUP_NAME `
-            --xml
-          Set-Content -Path "${{ runner.temp }}\publish-profile.xml" -Value $profile
 
       - name: 🚀 Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ env.WEBAPP_NAME }}
-          publish-profile: ${{ runner.temp }}\publish-profile.xml
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: ${{ runner.temp }}\package\WebApp.zip
