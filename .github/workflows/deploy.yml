@@ -113,7 +113,7 @@ jobs:
         working-directory: ./employee-user-management
     env:
       WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
-      DB_CONNECTION_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
+      DB_CONN_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
       DOTNET_CLI_HOME: ${{ github.workspace }}
 
