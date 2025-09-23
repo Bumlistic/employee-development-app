@@ -20,6 +20,10 @@ jobs:
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
       KEY_VAULT_NAME: ${{ secrets.KEY_VAULT_NAME }}
 
+    outputs:
+      webapp_name: ${{ steps.get_outputs.outputs.webapp_name }}
+      db_conn_string: ${{ steps.get_outputs.outputs.db_conn_string }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -70,8 +74,8 @@ jobs:
           }
 
           echo "::add-mask::$dbConnString"
-          echo "WEBAPP_NAME=$webAppName" >> $env:GITHUB_ENV
-          echo "DB_CONN_STRING=$dbConnString" >> $env:GITHUB_ENV
+          echo "webapp_name=$webAppName" >> $env:GITHUB_OUTPUT
+          echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
 
 # ---------------- SONAR JOB -----------------
 
@@ -113,9 +117,9 @@ jobs:
       run:
         working-directory: ./employee-user-management
     env:
-      WEBAPP_NAME: ${{ env.WEBAPP_NAME }}
-      DB_CONN_STRING: ${{ env.DB_CONN_STRING }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
+      WEBAPP_NAME: ${{ needs.terraform.outputs.webapp_name }}
+      DB_CONN_STRING: ${{ needs.terraform.outputs.db_conn_string }}
       DOTNET_CLI_HOME: ${{ github.workspace }}
 
     steps:
@@ -149,10 +153,7 @@ jobs:
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
-
-          # 👇 Set EF Core connection string format
           $env:ConnectionStrings__DefaultConnection = "$env:DB_CONN_STRING"
-
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: 📦 Package App for Deployment
