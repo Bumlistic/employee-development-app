@@ -141,8 +141,8 @@ jobs:
       - name: 🧪 Verify DB Connection String
         shell: pwsh
         run: |
-          if (-not $env:DB_CONNECTION_STRING) {
-            Write-Error "❌ DB_CONNECTION_STRING is not set. Failing early..."
+          if (-not $env:DB_CONN_STRING) {
+            Write-Error "❌ DB_CONN_STRING is not set. Failing early..."
             exit 1
           }
 
