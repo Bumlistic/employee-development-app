@@ -152,7 +152,12 @@ jobs:
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
+
+          # Set the correct env var for EF
+          $env:ConnectionStrings__DefaultConnection = "${{ env:DB_CONN_STRING }}"
+
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
+
 
       - name: 📦 Package App for Deployment
         run: |
