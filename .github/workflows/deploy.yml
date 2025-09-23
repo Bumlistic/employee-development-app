@@ -117,7 +117,7 @@ jobs:
         run: |
           $conn = az keyvault secret show `
             --vault-name $env:KEY_VAULT_NAME `
-            --name ConnectionStrings--EmployeeDbConnection `
+            --name DbConnectionString `
             --query value -o tsv
 
           if (-not $conn) {
