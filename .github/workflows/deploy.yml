@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
+# ---------------- TERRAFORM JOB -----------------
   terraform:
     name: 🌍 Terraform Infrastructure Deployment
     runs-on: windows-latest
@@ -49,32 +50,7 @@ jobs:
         shell: pwsh
         run: terraform apply -auto-approve
 
-      - name: 🔎 Fetch Web App Name and DB Connection String
-        id: outputs
-        shell: pwsh
-        run: |
-          $webAppName = az webapp list --resource-group $env:RESOURCE_GROUP_NAME --query "[0].name" -o tsv
-          if (-not $webAppName) {
-            Write-Error "❌ Could not find any Web App in the resource group."
-            exit 1
-          }
-
-          $dbConnString = az keyvault secret show `
-            --vault-name $env:KEY_VAULT_NAME `
-            --name DbConnectionString `
-            --query value -o tsv 2>$null
-
-          if (-not $dbConnString) {
-            Write-Error "❌ Could not fetch DB Connection String from Key Vault."
-            exit 1
-          }
-
-          echo "webapp_name=$webAppName" >> $env:GITHUB_OUTPUT
-          echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
-
-    outputs:
-      WEBAPP_NAME: ${{ steps.outputs.outputs.webapp_name }}
-      DB_CONN_STRING: ${{ steps.outputs.outputs.db_conn_string }}
+# ---------------- SONARCLOUD JOB -----------------
 
   sonarcloud:
     name: 🧼 SonarCloud Code Analysis
@@ -104,6 +80,8 @@ jobs:
             -Dsonar.sources=./employee-user-management
             -Dsonar.host.url=https://sonarcloud.io
 
+# ---------------- DEPLOY JOB -----------------
+
   build-and-deploy:
     name: 🚀 Build & Deploy Web App
     runs-on: windows-latest
@@ -112,22 +90,44 @@ jobs:
       run:
         working-directory: ./employee-user-management
     env:
-      WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
-      DB_CONN_STRING: ${{ needs.terraform.outputs.DB_CONN_STRING }}
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
+      KEY_VAULT_NAME: ${{ secrets.KEY_VAULT_NAME }}
       DOTNET_CLI_HOME: ${{ github.workspace }}
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: 🔐 Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🔎 Fetch Web App Name and DB Connection String
+        shell: pwsh
+        run: |
+          $webAppName = az webapp list --resource-group $env:RESOURCE_GROUP_NAME --query "[0].name" -o tsv
+          if (-not $webAppName) {
+            Write-Error "❌ Could not find any Web App in the resource group."
+            exit 1
+          }
+
+          $dbConnString = az keyvault secret show `
+            --vault-name $env:KEY_VAULT_NAME `
+            --name DbConnectionString `
+            --query value -o tsv 2>$null
+
+          if (-not $dbConnString) {
+            Write-Error "❌ Could not fetch DB Connection String from Key Vault."
+            exit 1
+          }
+
+          echo "WEBAPP_NAME=$webAppName" >> $env:GITHUB_ENV
+          echo "DB_CONN_STRING=$dbConnString" >> $env:GITHUB_ENV
+
       - id: sln
         shell: pwsh
         run: |
           $sln = Get-ChildItem -Path . -Filter *.sln -Recurse | Select-Object -First 1
-          if (-not $sln) {
-            Write-Error "❌ No solution file found"
-            exit 1
-          }
           echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-dotnet@v4
@@ -155,7 +155,6 @@ jobs:
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: 📦 Package App for Deployment
-        shell: pwsh
         run: |
           mkdir ${{ runner.temp }}\package
           Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
