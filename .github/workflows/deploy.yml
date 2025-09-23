@@ -162,14 +162,15 @@ jobs:
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
 
-          # Set connection string as environment variable
+          # Set connection string as environment variable for migrations
           $env:ConnectionStrings__DefaultConnection = $env:DB_CONN_STRING
 
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: 📦 Package App for Deployment
+        shell: pwsh
         run: |
-          mkdir ${{ runner.temp }}\package
+          mkdir "${{ runner.temp }}\package"
           Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
 
       - name: 🔐 Get Azure Web App Publishing Profile
