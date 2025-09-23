@@ -20,10 +20,6 @@ jobs:
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
       KEY_VAULT_NAME: ${{ secrets.KEY_VAULT_NAME }}
 
-    outputs:
-      webapp_name: ${{ steps.get_outputs.outputs.webapp_name }}
-      db_conn_string: ${{ steps.get_outputs.outputs.db_conn_string }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -53,8 +49,8 @@ jobs:
         shell: pwsh
         run: terraform apply -auto-approve
 
-      - name: 🔎 Fetch Web App Name and DB Connection String
-        id: get_outputs
+      - name: 🔎 Fetch Web App Name
+        id: outputs
         shell: pwsh
         run: |
           $webAppName = az webapp list --resource-group $env:RESOURCE_GROUP_NAME --query "[0].name" -o tsv
@@ -63,19 +59,10 @@ jobs:
             exit 1
           }
 
-          $dbConnString = az keyvault secret show `
-            --vault-name $env:KEY_VAULT_NAME `
-            --name DbConnectionString `
-            --query value -o tsv 2>$null
-
-          if (-not $dbConnString) {
-            Write-Error "❌ Could not fetch DB Connection String from Key Vault."
-            exit 1
-          }
-
-          echo "::add-mask::$dbConnString"
           echo "webapp_name=$webAppName" >> $env:GITHUB_OUTPUT
-          echo "db_conn_string=$dbConnString" >> $env:GITHUB_OUTPUT
+
+    outputs:
+      WEBAPP_NAME: ${{ steps.outputs.outputs.webapp_name }}
 
 # ---------------- SONAR JOB -----------------
 
@@ -118,26 +105,47 @@ jobs:
         working-directory: ./employee-user-management
     env:
       RESOURCE_GROUP_NAME: ${{ secrets.RESOURCE_GROUP_NAME }}
-      WEBAPP_NAME: ${{ needs.terraform.outputs.webapp_name }}
-      DB_CONN_STRING: ${{ needs.terraform.outputs.db_conn_string }}
+      KEY_VAULT_NAME: ${{ secrets.KEY_VAULT_NAME }}
+      WEBAPP_NAME: ${{ needs.terraform.outputs.WEBAPP_NAME }}
       DOTNET_CLI_HOME: ${{ github.workspace }}
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: 🔐 Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🔐 Fetch DB Connection String from Key Vault
+        shell: pwsh
+        run: |
+          $conn = az keyvault secret show `
+            --vault-name $env:KEY_VAULT_NAME `
+            --name DbConnectionString `
+            --query value -o tsv
+
+          if (-not $conn) {
+            Write-Error "❌ Could not fetch DB connection string"
+            exit 1
+          }
+
+          echo "::add-mask::$conn"
+          echo "DB_CONN_STRING=$conn" >> $env:GITHUB_ENV
+
       - id: sln
         shell: pwsh
         run: |
           $sln = Get-ChildItem -Path . -Filter *.sln -Recurse | Select-Object -First 1
-          echo "sln_path=$($sln.FullName)" >> $env:GITHUB_ENV
+          echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
-      - run: dotnet restore $env:sln_path
-      - run: dotnet build $env:sln_path --configuration Release
-      - run: dotnet publish $env:sln_path --configuration Release --output "${{ runner.temp }}\WebAppContent"
+      - run: dotnet restore ${{ steps.sln.outputs.sln_path }}
+      - run: dotnet build ${{ steps.sln.outputs.sln_path }} --configuration Release
+      - run: dotnet publish ${{ steps.sln.outputs.sln_path }} --configuration Release --output "${{ runner.temp }}\WebAppContent"
 
       - name: 🧪 Verify DB Connection String
         shell: pwsh
@@ -153,7 +161,10 @@ jobs:
           mkdir ./tools
           dotnet tool install --tool-path ./tools dotnet-ef --version 9.0.1
           $env:PATH = "$PWD/tools;$env:PATH"
-          $env:ConnectionStrings__DefaultConnection = "$env:DB_CONN_STRING"
+
+          # Set connection string as environment variable
+          $env:ConnectionStrings__DefaultConnection = $env:DB_CONN_STRING
+
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: 📦 Package App for Deployment
