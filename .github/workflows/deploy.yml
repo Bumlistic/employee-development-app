@@ -76,8 +76,6 @@ jobs:
       WEBAPP_NAME: ${{ steps.outputs.outputs.webapp_name }}
       DB_CONN_STRING: ${{ steps.outputs.outputs.db_conn_string }}
 
-# ---------------- SONAR JOB -----------------
-
   sonarcloud:
     name: 🧼 SonarCloud Code Analysis
     runs-on: ubuntu-latest
@@ -106,8 +104,6 @@ jobs:
             -Dsonar.sources=./employee-user-management
             -Dsonar.host.url=https://sonarcloud.io
 
-# ---------------- DEPLOY JOB -----------------
-
   build-and-deploy:
     name: 🚀 Build & Deploy Web App
     runs-on: windows-latest
@@ -128,6 +124,10 @@ jobs:
         shell: pwsh
         run: |
           $sln = Get-ChildItem -Path . -Filter *.sln -Recurse | Select-Object -First 1
+          if (-not $sln) {
+            Write-Error "❌ No solution file found"
+            exit 1
+          }
           echo "sln_path=$($sln.FullName)" >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-dotnet@v4
@@ -155,6 +155,7 @@ jobs:
           dotnet-ef database update --project ./EmployeeManagement.App/EmployeeManagement.App.csproj
 
       - name: 📦 Package App for Deployment
+        shell: pwsh
         run: |
           mkdir ${{ runner.temp }}\package
           Compress-Archive -Path "${{ runner.temp }}\WebAppContent\*" -DestinationPath "${{ runner.temp }}\package\WebApp.zip"
